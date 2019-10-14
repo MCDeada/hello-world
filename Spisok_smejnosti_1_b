@@ -1,0 +1,1401 @@
+#include <fstream>
+#include <string>
+#include <iostream>
+#include <vector>
+#include <map>
+#include <set>
+#include <algorithm>
+
+using namespace std;
+// Возможные значения ориентированности/взвешенности
+enum Options {
+	no = 0, yes = 1
+};
+
+// Данная функция считывает символ встроке до разделителя и очищает исходную строку с нулевой позиции до этого разделителя + delta
+double takeKnot(string &s, string str, int &posRazd, int delta) {
+	posRazd = s.find(str);
+	double knot = atof(s.substr(0, posRazd).c_str()); // Перевод в double
+	s.erase(0, posRazd + 1 + delta);
+
+	return knot;
+}
+
+class Graph {
+private:
+	bool isOriented = no;
+	bool isWeighted = no;
+	map <double, vector<pair<double, double>>> mainGraph;
+	vector<double> knots;
+public:
+	Graph();
+	Graph(string fn); // Считывание из файла
+	Graph(const Graph& a);
+	~Graph();
+	void printGraph(); // Функция вывода графа
+	void printInFile(string fileName); // Функция вывода в файл
+	bool knotInsert(string knot); // Функция добавления вершины
+	void knotDelete(string knot); // Функция удаления вершины
+	bool pathInsert(string knot1, string knot2); // Функция добавления ребра(дуги) с весом по умолчанию
+	bool pathInsert(string knot1, string knot2, string weight); // Функция добавления ребра(дуги) с весом
+	void changeWeight(string kt1, string kt2, string a); // Функция, позволяющая изменить вес определенного ребра
+	void pathDelete(string knot1, string knot2); // Функция удаления ребра(дуги)
+	int vertexIndegree(string vertex); // Функция вычисляющая степень полузахода
+	int vertexOutdegree(string vertex); // Функция вычисляющая степень полуисхода
+	Graph reverseGraph(bool fl); // Функция вычисляющая дополнение графа
+	map <double, vector<pair<double, double>>> getAdjacencylist(); // Функция возвращающая список смежности
+	vector<vector<double>> findConnectedComponents(); // Функция вычисляющая компоненты связности
+	bool isConnected_easy(); // Функция определяющая является ли граф связным с помощью поиска всех компонентов
+	Graph kruskalAlg();  // Функция вычисляющая минимальное оставное дерево для неориентированного, взвешенного графа
+	vector<double> getKnots(); // Функция возвращающая список всех вершин
+	void setAdjacencylist(map <double, vector<pair<double, double>>> mp);  // Сеттер поля списка смежности
+	void setOriented(bool p);  // Сеттер поля ориентированности
+	void setWeighted(bool p);  // Сеттер поля взвешенности
+	void setKnots(vector<double> kt); // Сеттер списка всех вершин
+	Graph transposedGraph(); // Функция возвращающая транспонированный граф
+};
+
+// Сеттер поля списка смежности
+void Graph::setAdjacencylist(map <double, vector<pair<double, double>>> mp) {
+	this->mainGraph = mp;
+}
+
+// Сеттер поля ориентированности
+void Graph::setOriented(bool p) {
+	this->isOriented = p;
+}
+
+// Сеттер поля взвешенности
+void Graph::setWeighted(bool p) {
+	this->isWeighted = p;
+}
+
+// Сеттер списка всех вершин
+void Graph::setKnots(vector<double> kt) {
+	this->knots = kt;
+}
+
+// Реализация функции считывания из файла
+Graph::Graph(string fileName) {
+	ifstream in(fileName);										// Привязываем файлы
+	double knot, weight;										// Узел - значение ключа
+	int posRazd, isOriented = no, isWeighted = no;
+	string s;													// Строка и подстрока для обработки узлов
+	getline(in, s);												// Считываем данные об ориентированности
+	isOriented = s.find("not");
+	getline(in, s);												// Считываем данные об ориентированности
+	isWeighted = s.find("not");
+	map <double, vector<pair<double, double>>> mainGraph;		// Основное поле графа
+	vector<pair<double, double>> a;								// Вспомогательынй вектор с парами для одного узла
+	pair<double, double> pr;									// Вспомогательное определение пары
+
+	if (isOriented == -1) {
+		if (isWeighted == -1) { // Взвешенный, ориентированный
+			set<double> lst;    // Set считающий все вершины, чтобы знать не только те, из которых выходят дуги
+			while (in.peek() != EOF) {
+				getline(in, s);												// Берем первую строчку
+				knot = takeKnot(s, ":", posRazd, 0);
+				lst.insert(knot);
+				double knot_main = knot;
+				a = mainGraph[knot_main];
+				while (posRazd != -1) {
+					knot = takeKnot(s, "(", posRazd, 0);
+					weight = takeKnot(s, ")", posRazd, 0);
+					lst.insert(knot);
+					if (s.size() != 0)
+						s.erase(0, 1);
+					else
+						posRazd = -1;
+					pr = pair<double, double>(knot, weight);
+					a.push_back(pr);
+				}
+				mainGraph[knot_main] = a;
+				a.clear();
+			}
+			for (auto it : lst) {
+				if (mainGraph.count(it) == 0)
+					mainGraph[it] = {};
+				it++;
+			}
+			this->isWeighted = yes;
+			this->isOriented = yes;
+			this->mainGraph = mainGraph;
+		}
+		else {                // Не взешенный, ориентированный
+			set<double> lst;  // Set считающий все вершины, чтобы знать не только те, из которых выходят дуги
+			while (in.peek() != EOF) {
+				getline(in, s);												// Берем первую строчку
+				knot = takeKnot(s, ":", posRazd, 0);
+				lst.insert(knot);
+				double knot_main = knot;
+				a = mainGraph[knot_main];
+				while (posRazd != -1) {
+					knot = takeKnot(s, ",", posRazd, 0);
+					lst.insert(knot);
+					pr = pair<double, double>(knot, 0);
+					a.push_back(pr);
+				}
+				mainGraph[knot_main] = a;
+				a.clear();
+			}
+			int key_count;
+			for (auto it : lst) {
+				if (mainGraph.count(it) == 0)
+					mainGraph[it] = {};
+				it++;
+			}
+			this->isWeighted = no;
+			this->isOriented = yes;
+			this->mainGraph = mainGraph;
+		}
+	}
+	else {
+		if (isWeighted == -1) { // Взвешенный, не ориентрированный
+			while (in.peek() != EOF) {  // Цикл добавления в map
+				vector<double> knots_in_line, weights_in_line;	// Вспомогательные вектора для неориентированного случая
+				getline(in, s);												// Берем первую строчку
+				knot = takeKnot(s, ":", posRazd, 0);
+				knots_in_line.push_back(knot);
+				a = mainGraph[knots_in_line[0]];
+				while (posRazd != -1) {
+					knot = takeKnot(s, "(", posRazd, 0);
+					knots_in_line.push_back(knot);
+					weight = takeKnot(s, ")", posRazd, 0);
+					weights_in_line.push_back(weight);
+					if (s.size() != 0)
+						s.erase(0, 1);
+					else
+						posRazd = -1;
+					pr = pair<double, double>(knot, weight);
+					a.push_back(pr);
+				}
+				mainGraph[knots_in_line[0]] = a;
+				a.clear();
+
+				for (int i = 1; i < knots_in_line.size(); i++) {
+					a = mainGraph[knots_in_line[i]];
+					pr = pair<double, double>(knots_in_line[0], weights_in_line[i - 1]);
+					a.push_back(pr);
+					mainGraph[knots_in_line[i]] = a;
+				}
+				knots_in_line.clear();
+				weights_in_line.clear();
+				a.clear();
+			}
+			this->isWeighted = yes;
+			this->mainGraph = mainGraph;
+		}
+		else { // Не взешенный, не ориентированный
+			while (in.peek() != EOF) {  // Цикл добавления в map
+				vector<double> knots_in_line;	// Вспомогательный вектора для неориентированного случая
+				getline(in, s);												// Берем первую строчку
+				knot = takeKnot(s, ":", posRazd, 0);
+				knots_in_line.push_back(knot);
+				a = mainGraph[knots_in_line[0]];
+				while (posRazd != -1) {
+					knot = takeKnot(s, ",", posRazd, 0);
+					knots_in_line.push_back(knot);
+					pr = pair<double, double>(knot, 0);
+					a.push_back(pr);
+				}
+				mainGraph[knots_in_line[0]] = a;
+				a.clear();
+				pr = pair<double, double>(knots_in_line[0], 0);
+				for (int i = 1; i < knots_in_line.size(); i++) {
+					a = mainGraph[knots_in_line[i]];
+					a.push_back(pr);
+					mainGraph[knots_in_line[i]] = a;
+				}
+				knots_in_line.clear();
+				a.clear();
+			}
+			this->mainGraph = mainGraph;
+		}
+	}
+	for (auto it : mainGraph) {
+		knots.push_back(it.first);
+	}
+}
+
+Graph::Graph() {
+}
+
+// Реализация конструктора копирования
+Graph::Graph(const Graph& a) {
+	this->isOriented = a.isOriented;
+	this->isWeighted = a.isWeighted;
+	this->mainGraph  = a.mainGraph;
+	this->knots      = a.knots;
+}
+
+// Реализация деструктора
+Graph::~Graph() {
+	this->mainGraph.clear();
+	this->isOriented = no;
+	this->isWeighted = no;
+	this->knots.clear();
+}
+
+// Реализация функции вывода графа на экран
+void Graph::printGraph() {
+	if (isOriented == yes)
+		cout << "Oriented, ";
+	else
+		cout << "Not oriented, ";
+	if (isWeighted == no) {
+		cout << "Not weighted\n";
+		for (auto it = mainGraph.begin(); it != mainGraph.end(); it++, cout << endl)
+		{
+			cout << it->first << " : ";
+			for (int i = 0; i < it->second.size(); i++)
+				cout << it->second[i].first << ", ";
+		}
+	}
+	else {
+		cout << "Weighted\n";
+		for (auto it = mainGraph.begin(); it != mainGraph.end(); it++, cout << endl)
+		{
+			cout << it->first << " : ";
+			for (int i = 0; i < it->second.size(); i++)
+				cout << it->second[i].first << " " << "with weight " << it->second[i].second << ", ";
+		}
+	}
+}
+
+// Реализация функции вывода графа в файл
+void Graph::printInFile(string flnm) {
+	ofstream out(flnm);
+	if (this->isWeighted == yes) {
+		out << "Weighted, ";
+		if (this->isOriented == yes)
+			out << "Oriented" << endl;
+		else
+			out << "Not oriented" << endl;
+		for (auto it : this->mainGraph) {
+			out << it.first << ": ";
+			for (int i = 0; i < it.second.size(); i++) {
+				out << it.second[i].first << "(" << it.second[i].second << "), ";
+			}
+			out << endl;
+		}
+	}
+	else {
+		out << "Not weighted, ";
+		if (this->isOriented == yes)
+			out << "Oriented" << endl;
+		else
+			out << "Not oriented" << endl;
+		for (auto it : this->mainGraph) {
+			out << it.first << ": ";
+			for (int i = 0; i < it.second.size(); i++) {
+				out << it.second[i].first << ", ";
+			}
+			out << endl;
+		}
+	}
+}
+
+// Вспомгательная функция для обработки символьного ввода
+bool isSymbols(double n, string str) {
+	if (n == 0.0) {
+		string s = "0123456789.";
+		for (int i = 0; i < str.size(); i++) {
+			size_t pos = s.find_first_of(str[i]);
+			if (pos == string::npos)
+				return false;
+		}
+	}
+	return true;
+}
+
+// Реализация функции добавления вершины 
+bool Graph::knotInsert(string kt) {
+	bool flag_same_vertex = true, flag_symbols;
+	double k = atof(kt.c_str());
+	flag_symbols = isSymbols(k, kt);
+	if (flag_symbols) {
+		for (int i = 0; i < this->knots.size(); i++) {
+			if (this->knots[i] == k)
+			{
+				flag_same_vertex = false;
+				break;
+			}
+		}
+		if (flag_same_vertex) {
+			this->mainGraph.insert(pair<double, vector<pair<double, double>>>(k, {}));
+			this->knots.push_back(k);
+			return 1;
+		}
+		else {
+			cout << "Wrong input(existing vertex)" << endl;
+			return 0;
+		}
+	}
+	else {
+		cout << "Wrong input(symbol)" << endl;
+		return 0;
+	}
+}
+
+// Реализация функции удаления вершины 
+void Graph::knotDelete(string kt) {
+	bool flag_existent_vertex = false, flag_symbols;
+	double k = atof(kt.c_str());
+	flag_symbols = isSymbols(k, kt);
+	if (flag_symbols) {
+		for (int i = 0; i < this->knots.size(); i++)
+			if (k == knots[i]) {
+				flag_existent_vertex = true;
+				break;
+			}
+		if (flag_existent_vertex) {
+			if (this->isOriented == no) {  // Удаление упоминаний вершины у векторов смежных с исходной
+				for (auto it = this->mainGraph[k].begin(); it < this->mainGraph[k].end(); it++) {
+					for (auto it1 = this->mainGraph[(*it).first].begin(); it1 < this->mainGraph[(*it).first].end(); it1++) {
+						if ((*it1).first == k) {
+							this->mainGraph[(*it).first].erase(it1, it1 + 1);
+							break;
+						}
+					}
+				}
+			}
+			map<double, vector<pair<double, double>>> ::iterator it; // Удаление вектора исходной вершины из графа
+			it = this->mainGraph.find(k);
+			this->mainGraph.erase(it);
+			for (auto it = this->knots.begin(); it < this->knots.end(); it++)
+				if (*it = k) {
+					this->knots.erase(it, it);
+					break;
+				}
+		}
+		else
+			cout << "Can't delete nonexistent vertex " << kt << endl;
+	}
+	else
+		cout << "Wrong input(symbol)" << endl;
+}
+
+// Релизация функции добавления ребра(дуги)
+bool Graph::pathInsert(string kt1, string kt2) {
+	bool flag_existent_vertex1 = false, flag_symbols1,
+		 flag_existent_vertex2 = false, flag_symbols2,
+		 flag_path_exists      = true;
+	double k1 = atof(kt1.c_str());
+	flag_symbols1 = isSymbols(k1, kt1);
+	if (flag_symbols1)
+	{
+		double k2 = atof(kt2.c_str());
+		flag_symbols2 = isSymbols(k2, kt2);
+		if (flag_symbols2) {
+			for (int i = 0; i < this->knots.size(); i++) {
+				if (k1 == knots[i])
+					flag_existent_vertex1 = true;
+				if (k2 == knots[i])
+					flag_existent_vertex2 = true;
+			}
+			if (flag_existent_vertex1 & flag_existent_vertex2) {
+				for (auto it = this->mainGraph[k1].begin(); it < this->mainGraph[k1].end(); it++) {
+					if ((*it).first == k2) {
+						flag_path_exists = false;
+						break;
+					}
+				}
+				if (flag_path_exists) {
+					if (this->isWeighted == yes) {
+						this->mainGraph[k1].push_back(pair<double, double>(k2, 1));
+						if (this->isOriented == no)
+							this->mainGraph[k2].push_back(pair<double, double>(k1, 1));
+					}
+					else {
+						this->mainGraph[k1].push_back(pair<double, double>(k2, 0));
+						if (this->isOriented == no)
+							this->mainGraph[k2].push_back(pair<double, double>(k1, 0));
+					}
+					return 1;
+				}
+				else {
+					cout << "Wrong input(existing path)" << endl;
+					return 0;
+				}
+			}
+			else {
+				cout << "One of vertexes " << kt1 << ", " << kt2 << " do not exist in graph or both of them\n";
+				return 0;
+			}
+		}
+		else {
+			cout << "Wrong input second vertex(symbol)" << endl;
+			return 0;
+		}
+	}
+	else {
+		cout << "Wrong input first vertex(symbol)" << endl;
+		return 0;
+	}
+}
+
+// Функция добавления ребра(дуги) с весом
+bool Graph::pathInsert(string kt1, string kt2, string w) {
+	if (this->isWeighted == no) {
+		cout << "Wrong command(it is not weighted graph)\n";
+		return 0;
+	}
+	else {
+		bool flag_existent_vertex1 = false, flag_symbols1,
+			 flag_existent_vertex2 = false, flag_symbols2,
+			 flag_path_exists      = true, flag_symbols3;
+		double k1 = atof(kt1.c_str());
+		flag_symbols1 = isSymbols(k1, kt1);
+		if (flag_symbols1)
+		{
+			double k2 = atof(kt2.c_str());
+			flag_symbols2 = isSymbols(k2, kt2);
+			if (flag_symbols2) {
+				double new_weight = atof(w.c_str());
+				flag_symbols3 = isSymbols(new_weight, w);
+				if (flag_symbols3) {
+					for (int i = 0; i < this->knots.size(); i++) {
+						if (k1 == knots[i])
+							flag_existent_vertex1 = true;
+						if (k2 == knots[i])
+							flag_existent_vertex2 = true;
+					}
+					if (flag_existent_vertex1 & flag_existent_vertex2) {
+						for (auto it = this->mainGraph[k1].begin(); it < this->mainGraph[k1].end(); it++) {
+							if ((*it).first == k2) {
+								flag_path_exists = false;
+								break;
+							}
+						}
+						if (flag_path_exists) {
+							this->mainGraph[k1].push_back(pair<double, double>(k2, new_weight));
+							if (this->isOriented == no)
+								this->mainGraph[k2].push_back(pair<double, double>(k1, new_weight));
+							return 1;
+						}
+						else {
+							cout << "Wrong input(existing path)" << endl;
+							return 0;
+						}
+					}
+					else {
+						cout << "One of vertexes " << kt1 << ", " << kt2 << " do not exist in graph or both of them\n";
+						return 0;
+					}
+				}
+				else {
+					cout << "Wrong input weight(symbol)" << endl;
+					return 0;
+				}
+			}
+			else {
+				cout << "Wrong input second vertex(symbol)" << endl;
+				return 0;
+			}
+		}
+		else {
+			cout << "Wrong input first vertex(symbol)" << endl;
+			return 0;
+		}
+	}
+}
+
+// Функция добавления веса созданному ребру
+void Graph::changeWeight(string kt1, string kt2, string a) {
+	if (this->isWeighted == no)
+		cout << "Wrong command(it is not weighted graph)\n";
+	else {
+		bool flag_existent_vertex1 = false, flag_symbols1,
+			 flag_existent_vertex2 = false, flag_symbols2,
+			 flag_path_exists      = false, flag_symbols3;
+		double k1 = atof(kt1.c_str());
+		flag_symbols1 = isSymbols(k1, kt1);
+		if (flag_symbols1)
+		{
+			double k2 = atof(kt2.c_str());
+			flag_symbols2 = isSymbols(k2, kt2);
+			if (flag_symbols2) {
+				double new_weight = atof(a.c_str());
+				flag_symbols3 = isSymbols(new_weight, a);
+				if (flag_symbols3) {
+					for (int i = 0; i < this->knots.size(); i++) {
+						if (k1 == knots[i])
+							flag_existent_vertex1 = true;
+						if (k2 == knots[i])
+							flag_existent_vertex2 = true;
+					}
+					if (flag_existent_vertex1 & flag_existent_vertex2) {
+						for (auto it = this->mainGraph[k1].begin(); it < this->mainGraph[k1].end(); it++) {
+							if ((*it).first == k2) {
+								flag_path_exists = true;
+								(*it).second = new_weight;
+								break;
+							}
+						}
+						if (flag_path_exists) {
+							if (this->isOriented == no) {
+								for (auto it = this->mainGraph[k2].begin(); it < this->mainGraph[k2].end(); it++) {
+									if ((*it).first == k1) {
+										(*it).second = new_weight;
+										break;
+									}
+								}
+							}
+						}
+						else
+							cout << "Wrong input(nonexistent path)" << endl;
+					}
+					else
+						cout << "One of vertexes " << kt1 << ", " << kt2 << " do not exist in graph or both of them\n";
+				}
+				else
+					cout << "Wrong input weight(symbol)" << endl;
+			}
+			else
+				cout << "Wrong input second vertex(symbol)" << endl;
+		}
+		else
+			cout << "Wrong input first vertex(symbol)" << endl;
+	}
+}
+
+// Релизация функции добавления ребра(дуги)
+void Graph::pathDelete(string kt1, string kt2) {
+	bool flag_existent_vertex1 = false, flag_symbols1,
+		 flag_existent_vertex2 = false, flag_symbols2,
+		 flag_path_exists = false;
+	double k1 = atof(kt1.c_str());
+	flag_symbols1 = isSymbols(k1, kt1);
+	if (flag_symbols1)
+	{
+		double k2 = atof(kt2.c_str());
+		flag_symbols2 = isSymbols(k2, kt2);
+		if (flag_symbols2) {
+			for (int i = 0; i < this->knots.size(); i++) {
+				if (k1 == knots[i])
+					flag_existent_vertex1 = true;
+				if (k2 == knots[i])
+					flag_existent_vertex2 = true;
+			}
+			if (flag_existent_vertex1 & flag_existent_vertex2) {
+				for (auto it = this->mainGraph[k1].begin(); it < this->mainGraph[k1].end(); it++)
+					if ((*it).first == k2) {
+						flag_path_exists = true;
+						this->mainGraph[k1].erase(it, it + 1);
+						break;
+					}
+				if (flag_path_exists) {
+					if (this->isOriented == no) {
+						for (auto it = this->mainGraph[k2].begin(); it < this->mainGraph[k2].end(); it++)
+							if ((*it).first == k1) {
+								this->mainGraph[k2].erase(it, it + 1);
+								break;
+							}
+					}
+				}
+				else
+					cout << "Wrong input(no path)" << endl;
+			}
+			else
+				cout << "One of vertexes " << kt1 << ", " << kt2 << " do not exist in graph or both of them\n";
+		}
+		else
+			cout << "Wrong input second vertex(symbol)" << endl;
+	}
+	else
+		cout << "Wrong input first vertex(symbol)" << endl;
+
+}
+
+// Функция демонстрации создания пустого графа и по файлам
+void creation_demonstration() {
+	Graph a;
+	a.printInFile("Creation_graph_empty.txt");;
+
+	Graph b = Graph("oriented_weighted.txt");
+	b.printInFile("Creation_graph_O_W.txt");
+
+	Graph c = Graph("oriented_not_weighted.txt");
+	c.printInFile("Creation_graph_O_NW.txt");
+
+	Graph d = Graph("not_oriented_weighted.txt");
+	d.printInFile("Creation_graph_NO_W.txt");
+
+	Graph e = Graph("not_oriented_not_weighted.txt");
+	e.printInFile("Creation_graph_NO_NW.txt");
+}
+
+// Функция демонстрация вставки узла
+void insertion_vertex_demonstration() {
+	Graph a;
+	a.knotInsert("0");     // верный тест
+	a.knotInsert("b");     // неверный тест
+	a.printInFile("Insertion_vertex_empty.txt");
+
+	Graph b = Graph("oriented_weighted.txt");
+	b.knotInsert("99.41"); // можно
+	b.knotInsert("0");     // нельзя
+	b.knotInsert("b");     // нельзя
+	b.printInFile("Insertion_vertex_O_W.txt");
+
+	Graph c = Graph("oriented_not_weighted.txt");
+	c.knotInsert("99");  // можно
+	c.knotInsert("0.0"); // нельзя
+	c.knotInsert("b");   // нельзя
+	c.printInFile("Insertion_vertex_O_NW.txt");
+
+	Graph d = Graph("not_oriented_weighted.txt");
+	d.knotInsert("99"); // можно
+	d.knotInsert("0");  // нельзя
+	d.knotInsert("b");  // нельзя
+	d.printInFile("Insertion_vertex_NO_W.txt");
+
+	Graph e = Graph("not_oriented_not_weighted.txt");
+	e.knotInsert("99");    // можно
+	e.knotInsert("0");     // нельзя
+	e.knotInsert("dsdw");  // нельзя
+	e.printInFile("Insertion_vertex_NO_NW.txt");
+}
+
+// Функция демонстрация удаления узла
+void delete_vertex_demonstration() {
+	Graph a;
+	a.knotDelete("0");     // неверный тест
+	a.printInFile("Delete_vertex_empty.txt");
+
+	Graph b = Graph("oriented_weighted.txt");
+	b.knotDelete("99.41"); // неверный тест(отсутствует вершина)
+	b.knotDelete("0");     // верный тест
+	b.knotDelete("b");     // неверный тест(отсутствует вершина)
+	b.printInFile("Delete_vertex_O_W.txt");
+
+	Graph c = Graph("oriented_not_weighted.txt");
+	c.knotDelete("101.2");  // неверный тест(отсутствует вершина)
+	c.knotDelete("0.0");    // верный тест
+	c.knotDelete("b");      // неверный тест(отсутствует вершина)
+	c.printInFile("Delete_vertex_O_NW.txt");
+
+	Graph d = Graph("not_oriented_weighted.txt");
+	d.knotDelete("99"); // неверный тест(отсутствует вершина)
+	d.knotDelete("0");  // верный тест
+	d.knotDelete("b");  // неверный тест(отсутствует вершина)
+	d.printInFile("Delete_vertex_NO_W.txt");
+
+	Graph e = Graph("not_oriented_not_weighted.txt");
+	e.knotDelete("99");    // неверный тест(отсутствует вершина)
+	e.knotDelete("0");     // верный тест
+	e.knotDelete("dsdw");  // неверный тест(отсутствует вершина)
+	e.printInFile("Delete_vertex_NO_NW.txt");
+}
+
+// Функция демонстрация вставки узла
+void insertion_path_demonstration() {
+	Graph a;
+	a.pathInsert("0", "12");     // неверный тест
+	a.printInFile("Insertion_path_empty.txt");
+
+	Graph b = Graph("oriented_weighted.txt");
+	b.pathInsert("99", "10"); // неверный тест(нет вершины 99)
+	b.pathInsert("0", "1");   // неверный тест(уже есть такой путь)
+	b.pathInsert("0", "мм");  // неверный тест(некорректный ввод)
+	b.pathInsert("8", "7");   // верный тест, но не указан вес для взвешенного
+	b.changeWeight("8", "7", "ап");  // неверное изменение веса(значение веса)
+	b.changeWeight("10", "8", "10"); // неверное изменение веса(нет пути такого)
+	b.changeWeight("8", "7", "10");  // верное изменение веса
+	b.printInFile("Insertion_path_O_W.txt");
+
+	Graph c = Graph("oriented_not_weighted.txt");
+	c.pathInsert("99", "10"); // неверный тест(нет вершины 99)
+	c.pathInsert("0", "1");   // неверный тест(уже есть такой путь)
+	c.pathInsert("0", "мм");  // неверный тест(некорректный ввод)
+	c.pathInsert("8", "7");   // верный тест, но не указан вес для неориентированного
+	c.changeWeight("8", "7", "10");  // неверное изменение веса(это не взвешенный граф)
+	c.printInFile("Insertion_path_O_NW.txt");
+
+	Graph d = Graph("not_oriented_weighted.txt");
+	d.pathInsert("99", "10"); // неверный тест(нет вершины 99)
+	d.pathInsert("0", "1");   // неверный тест(уже есть такой путь)
+	d.pathInsert("0", "мм");  // неверный тест(некорректный ввод)
+	d.pathInsert("8", "7");   // верный тест, но не указан вес для неориентированного
+	d.changeWeight("8", "7", "10");  // верное изменение веса
+	d.printInFile("Insertion_path_NO_W.txt");
+
+	Graph e = Graph("not_oriented_not_weighted.txt");
+	e.pathInsert("99", "10"); // неверный тест(нет вершины 99)
+	e.pathInsert("0", "1");   // неверный тест(уже есть такой путь)
+	e.pathInsert("0", "мм");  // неверный тест(некорректный ввод)
+	e.pathInsert("8", "7");   // верный тест, но не указан вес для неориентированного
+	e.changeWeight("8", "7", "10");  // неверное изменение веса(это не взвешенный граф)
+	e.printInFile("Insertion_path_NO_NW.txt");
+}
+
+// Функция демонстрации удаления ребра(дуги)
+void delete_path_demonstration() {
+	Graph a;
+	a.pathDelete("0", "1");     // неверный тест
+	a.printInFile("Delete_path_empty.txt");
+
+	Graph b = Graph("oriented_weighted.txt");
+	b.pathDelete("99", "10"); // неверный тест(нет вершины 99)
+	b.pathDelete("0", "1");   // верный тест
+	b.pathDelete("0", "мм");  // неверный тест(некорректный ввод)
+	b.pathDelete("8", "7");   // ytверный тест(нет такого пути)
+	b.printInFile("Delete_path_O_W.txt");
+
+	Graph c = Graph("oriented_not_weighted.txt");
+	c.pathDelete("99", "10"); // неверный тест(нет вершины 99)
+	c.pathDelete("0", "1");   // верный тест
+	c.pathDelete("0", "мм");  // неверный тест(некорректный ввод)
+	c.pathDelete("8", "7");   // неверный тест(нет такого пути)
+	c.printInFile("Delete_path_O_NW.txt");
+
+	Graph d = Graph("not_oriented_weighted.txt");
+	d.pathDelete("99", "10"); // неверный тест(нет вершины 99)
+	d.pathDelete("0", "1");   // верный тест
+	d.pathDelete("0", "мм");  // неверный тест(некорректный ввод)
+	d.pathDelete("8", "7");   // неверный тест(нет такого пути)
+	d.printInFile("Delete_path_NO_W.txt");
+
+	Graph e = Graph("not_oriented_not_weighted.txt");
+	e.pathDelete("99", "10"); // неверный тест(нет вершины 99)
+	e.pathDelete("0", "1");   // верный тест
+	e.pathDelete("0", "мм");  // неверный тест(некорректный ввод)
+	e.pathDelete("8", "7");   // неверный тест(нет такого пути)
+	e.printInFile("Delete_path_NO_NW.txt");
+}
+
+// Функция вычисляющая степень полузахода вершины
+int Graph::vertexIndegree(string vert) {
+	if (this->isOriented == no) {
+		cout << "No indegree for not oriented graph\n";
+		return -1;
+	}
+	else {
+		bool flag_existent_vertex = false, flag_symbols1;
+		int k = 0;
+		double v = atof(vert.c_str());
+		flag_symbols1 = isSymbols(v, vert);
+		if (flag_symbols1)
+		{
+			for (int i = 0; i < this->knots.size(); i++)
+				if (v == knots[i]) {
+					flag_existent_vertex = true;
+					break;
+				}
+			if (flag_existent_vertex) {
+				for (int i = 0; i < this->knots.size(); i++) {
+					for (auto j = this->mainGraph[knots[i]].begin(); j < this->mainGraph[knots[i]].end(); j++)
+						if (v == (*j).first) {
+							k++;
+							break;
+						}
+				}
+				return k;
+			}
+			else {
+				cout << "Wrong input(nonexistent vertex)\n";
+				return -1;
+			}
+		}
+		else {
+			cout << "Wrong input(symbol)" << endl;
+			return -1;
+		}
+	}
+}
+
+// Функция вычисляющая степень полуисхода вершины
+int Graph::vertexOutdegree(string vert) {
+	if (this->isOriented == no) {
+		cout << "No indegree for not oriented graph\n";
+		return -1;
+	}
+	else {
+		bool flag_existent_vertex = false, flag_symbols1;
+		double v = atof(vert.c_str());
+		flag_symbols1 = isSymbols(v, vert);
+		if (flag_symbols1)
+		{
+			for (int i = 0; i < this->knots.size(); i++)
+				if (v == knots[i]) {
+					flag_existent_vertex = true;
+					break;
+				}
+			if (flag_existent_vertex)
+				return this->mainGraph[v].size();
+			else {
+				cout << "Wrong input(nonexistent vertex)\n";
+				return -1;
+			}
+		}
+		else {
+			cout << "Wrong input(symbol)" << endl;
+			return -1;
+		}
+	}
+}
+
+// Функция демонстрации вычисления степени полуисхода вершины
+void indegree_demonstration() {
+	Graph b = Graph("oriented_weighted.txt");
+	int a, k;
+	a = b.vertexIndegree("b");
+	cout << "Indegree for vertex b = "<< a << endl;
+	a = b.vertexIndegree("99");
+	cout << "Indegree for vertex 99 = " << a << endl;
+	a = b.vertexIndegree("0");
+	cout << "Indegree for vertex 0 = "<< a << endl;
+	a = b.vertexIndegree("2");
+	cout << "Indegree for vertex 2 = " << a << endl;
+
+	Graph c = Graph("not_oriented_weighted.txt");
+	k = c.vertexIndegree("0");
+	cout << "Indegree for vertex 0 = " << k << endl;
+
+	Graph d = Graph("not_oriented_not_weighted.txt");
+	k = d.vertexIndegree("0");
+	cout << "Indegree for vertex 0 = " << k << endl;
+
+	Graph e = Graph("oriented_not_weighted.txt");
+	a = e.vertexIndegree("b");
+	cout << "Indegree for vertex b = " << a << endl;
+	a = e.vertexIndegree("99");
+	cout << "Indegree for vertex 99 = " << a << endl;
+	a = b.vertexIndegree("0");
+	cout << "Indegree for vertex 0 = " << a << endl;
+	a = e.vertexIndegree("5");
+	cout << "Indegree for vertex 0 = " << a << endl;
+}
+
+// Функция демонстрации вычисления степени полузахода вершины
+void outdegree_demonstration() {
+	Graph b = Graph("oriented_weighted.txt");
+	int a, k;
+	a = b.vertexOutdegree("b");
+	cout << "Outdegree for vertex b = " << a << endl;
+	a = b.vertexOutdegree("99");
+	cout << "Outdegree for vertex 99 = " << a << endl;
+	a = b.vertexOutdegree("0");
+	cout << "Outdegree for vertex 0 = " << a << endl;
+	a = b.vertexOutdegree("3");
+	cout << "Outdegree for vertex 3 = " << a << endl;
+
+	Graph c = Graph("not_oriented_weighted.txt");
+	k = c.vertexOutdegree("0");
+	cout << "Outdegree for vertex 0 = " << k << endl;
+
+	Graph d = Graph("not_oriented_not_weighted.txt");
+	k = d.vertexOutdegree("0");
+	cout << "Outdegree for vertex 0 = " << k << endl;
+
+	Graph e = Graph("oriented_not_weighted.txt");
+	a = e.vertexOutdegree("b");
+	cout << "Outdegree for vertex b = " << a << endl;
+	a = e.vertexOutdegree("99");
+	cout << "Outdegree for vertex 99 = " << a << endl;
+	a = e.vertexOutdegree("6");
+	cout << "Outdegree for vertex 6 = " << a << endl;
+	a = e.vertexOutdegree("3");
+	cout << "Outdegree for vertex 3 = " << a << endl;
+}
+
+// Функция постороения графа-дополнения
+Graph Graph::reverseGraph(bool fl) { // fl = true граф-дополнение с петлями, fl = false граф-дополнение без петель
+	Graph a;
+	a.isOriented = this->isOriented;
+	a.isWeighted = this->isWeighted;
+	a.knots = this->knots;
+	int h;
+	pair<double, double> pr;
+	map <double, vector<pair<double, double>>> mp;
+	vector<pair<double, double>> vec = {};
+	for (int i = 0; i < this->knots.size(); i++) {
+		mp[this->knots[i]] = vec;
+	}
+	vector<double> v = this->knots;
+	for (int i = 0; i < this->knots.size(); i++) {
+		for (auto it = this->mainGraph[i].begin(); it < this->mainGraph[i].end(); it++) {
+			for (auto j = v.begin(); j < v.end();) {
+				if ((*it).first == *j) {
+					v.erase(j, j + 1);
+					break;
+				}
+				else
+					j++;
+			}
+		}
+		if (!fl) {
+			for (auto it = v.begin(); it < v.end();) {
+				if (this->knots[i] == *it) {
+					v.erase(it, it + 1);
+					break;
+				}
+				else
+					it++;
+			}
+		}
+		if (a.isWeighted == yes)
+			h = 1;
+		else
+			h = 0;
+		for (int k = 0; k < v.size(); k++) {
+			pr = pair<double, double>(v[k], h);
+			vec.push_back(pr);
+		}
+		mp[this->knots[i]] = vec;
+		vec.clear();
+		v = this->knots;
+	}
+	a.mainGraph = mp;
+	return a;
+}
+
+// Функция демонстрации работы постороения графа-дополнения
+void reverse_graph_demonstration() {
+	// Ориентированный, взвешенный
+	Graph b = Graph("oriented_weighted.txt");
+	Graph b1 = b.reverseGraph(true);
+	b1.printInFile("Reverse_graph_O_W_with_loop.txt");
+	Graph b2 = b.reverseGraph(false);
+	b2.printInFile("Reverse_graph_O_W_without_loop.txt");
+
+	// Ориентированный, не взвешенный
+	Graph c = Graph("oriented_not_weighted.txt");
+	Graph c1 = c.reverseGraph(true);
+	c1.printInFile("Reverse_graph_O_NW_with_loop.txt");
+	Graph c2 = c.reverseGraph(false);
+	c2.printInFile("Reverse_graph_O_NW_without_loop.txt");
+
+	// Не ориегнтированный, взвешенный
+	Graph d = Graph("not_oriented_weighted.txt");
+	Graph d1 = d.reverseGraph(true);
+	d1.printInFile("Reverse_graph_NO_W_with_loop.txt");
+	Graph d2 = d.reverseGraph(false);
+	d2.printInFile("Reverse_graph_NO_W_without_loop.txt");
+
+	// Неориентированный, не взвешенный
+	Graph e = Graph("not_oriented_not_weighted.txt");
+	Graph e1 = e.reverseGraph(true);
+	e1.printInFile("Reverse_graph_NO_NW_with_loop.txt");
+	Graph e2 = e.reverseGraph(false);
+	e2.printInFile("Reverse_graph_NO_NW_without_loop.txt");
+}
+
+// Геттер поля mainGraph
+map <double, vector<pair<double, double>>> Graph::getAdjacencylist() {
+	return this->mainGraph;
+}
+
+// Функция обхода графа в глубину
+void dfs(Graph gr, double v, map<double, int> &used) {
+	used[v] = 1;
+	map <double, vector<pair<double, double>>> current_mp = gr.getAdjacencylist();
+	for (auto it : current_mp[v]) {
+		if (!used[it.first]) dfs(gr, it.first, used);
+	}
+}
+
+// Функция обхода с использованием идеи времени входа и времени выхода
+void dfs_with_times(Graph gr, double v, map<double, int> &used, map<double, int> &tin, map<double, int> &tout, int &T) {
+	used[v] = 1;
+	tin[v] = T++;
+	map <double, vector<pair<double, double>>> current_mp = gr.getAdjacencylist();
+	for (auto it : current_mp[v]) {
+		if (!used[it.first]) dfs_with_times(gr, it.first, used, tin, tout, T);
+	}
+	tout[v] = T++;
+}
+
+// Функция возвращающая транспонированный граф
+Graph Graph::transposedGraph() {
+	vector<pair<double, double>> vec;
+	map<double, vector<pair<double, double>>> mp;  // Список смежности транспонированного графа
+	for (int i = 0; i < this->knots.size(); i++) { // Заполняем его начальными значениями для корректной работы последующего цикла
+		mp[this->knots[i]] = vec;
+	}
+	Graph a(*this); // Создаем копию исходного графа
+	double firstVert, secondVert, weight;
+	for (int i = 0; i < this->knots.size(); i++) { // Вычислем список смежности транспонированного графа
+		for (int j = 0; j < this->mainGraph[this->knots[i]].size(); j++) {
+			firstVert = this->knots[i];
+			secondVert = this->mainGraph[this->knots[i]][j].first;
+			weight = this->mainGraph[this->knots[i]][j].second;
+			mp[secondVert].push_back(pair<double, double>(firstVert, weight));
+		}
+	}
+	a.setAdjacencylist(mp); // Присваиваем его результирующему графу
+	return a;
+}
+
+// Функция вычисляющая число посещенных вершин
+int numberOfOnes(map<double, int> mp) {
+	int k = 0;
+	for (map<double, int>::iterator it = mp.begin(); it != mp.end(); it++)
+		if ((*it).second == 1)
+			k++;
+	return k;
+}
+
+// Функция с быстрой сортировкой для tout'ов
+void quick_sort_tout(vector<pair<double, int>> &a, int L, int R, vector<double> kt) {
+	pair<double, int> m(a[(L + R) / 2]);		// Выбираем опорную пару элемент 
+	int i = L, j = R;			// Ставим i и j на начало и конец текущего массива соответственно 
+	while (j >= i) {			// Цикл с кодом сортировки
+		while (a[i].second > m.second) i++;
+		while (m.second > a[j].second) j--;
+		if (j >= i) {
+			swap(a[i], a[j]);
+			i++;
+			j--;
+		}
+	}
+	if ((j - L) > 0) quick_sort_tout(a, L, j, kt); // Рекрсивно вызываем эту же сортровку но на части массива
+	if ((R - i) > 0) quick_sort_tout(a, i, R, kt);
+}
+
+// Функция вычисляющая компоненты связности 
+vector<vector<double>> Graph::findConnectedComponents() {
+	map<double, int> mpAux, mpAuxCopy; // Массив, где ключ вершина, а значение её посещенность
+	vector<vector<double>> components; // Итоговый набор компонент связности
+	vector<double> vecAux;             // Промужточная компонента
+	int k = 0;
+	for (int i = 0; i < this->knots.size(); i++) {
+		mpAux[this->knots[i]] = 0;
+	}
+	mpAuxCopy = mpAux; // Сохраняем состояние непосещенного map'а, для случая работы в ориентированном варианте
+	if (this->knots.size() == 0) { // Если граф пустой
+		return components;
+	}
+	else if (this->isOriented == no) { // Если граф неориентированный
+		double a = (*mpAux.begin()).first; // Начнем обходить с первой вершины
+		while (k != this->knots.size()) {  // ВЫход произойдет когда мы посетим все вершины
+			dfs(*this, a, mpAux); // запускаем обход
+			for (auto it = mpAux.begin(); it != mpAux.end(); it++) { // Собираем данные об одной компоненте
+				if ((*it).second == 1) {
+					k++;
+					vecAux.push_back((*it).first);
+					mpAux[(*it).first] = 2;
+				}
+			}
+			components.push_back(vecAux);
+			vecAux.clear();
+			if (k != this->knots.size()) { // ВЫбираем следующую непосещенную вершину для обхода
+				for (auto it : mpAux) {
+					if (it.second == 0) {
+						a = it.first;
+						break;
+					}
+				}
+			}
+		}
+		return components;
+	}
+	else { // Поиск компонент сильной связности для ориентированного графа
+		map<double, int> tin, tout;							  // Списки с временами по вершинам
+		for (int i = 0; i < this->knots.size(); i++) {        // Зануляем времена входа и выхода всех вершин
+			tin[this->knots[i]]  = 0;
+			tout[this->knots[i]] = 0;
+		}
+		double a = (*mpAux.begin()).first; // Выбираем за начало обхода первую вершину спика
+		int T = 0; // Начальное время
+		map<double, int>::iterator it = mpAux.begin();        // Начинаем с первго элемента
+		
+		while (k < mpAux.size()) {                            // Выход должен произойти, когда мы уже отсмотрели все вершины и итератор стал равен последнему элементу
+			for (it = mpAux.begin(); it != mpAux.end(); it++) // Выбираем первую вершину в текущем mpAux, которая не посещена 
+				if ((*it).second == 0)
+					break;
+			if (it != mpAux.end()) {                          // Пока у нас есть непосещенная вершина
+				dfs_with_times(*this, (*it).first, mpAux, tin, tout, T); // Производим обход от неё
+			}
+			k = numberOfOnes(mpAux); // Находим общее число посещенных вершин
+		}
+		Graph trns = this->transposedGraph(); // Строим транспонированный граф
+		int L = 0, R = tout.size() - 1;       // Параметры для быстрой сортировки
+		vector<pair<double, int>> v1;         // Вектор в котором после первого цикла окажется порядок с тем, как нужно обходить вершины, с tout в виде map оказалось неудобно работать
+		pair<double, int> pr;                 // Вспомогательное определение пары
+		for (auto it1 = tout.begin(); it1 != tout.end(); it1++) { // Составляем список пар (вершина, время захода)
+			pr = pair<double, int>((*it1).first, (*it1).second);
+			v1.push_back(pr);
+		}
+		quick_sort_tout(v1, L, R, trns.getKnots()); // Сортируем v1 
+		k = 0; // Это переменная понадобится как сигнал о том, что все компоненты созданы
+		a = (*v1.begin()).first; // Так как мы отсортировали в порядке убывания времени захода, то начинаем с первой вершины
+		while (k != mpAuxCopy.size()) { // Пока не обошли все вершины
+			dfs(trns, a, mpAuxCopy);    // Вызываем обход в глубину от вершины с наибольшим временем захода
+			for (auto it1 = mpAuxCopy.begin(); it1 != mpAuxCopy.end(); it1++) { // Формируем компоненту связности 
+				if ((*it1).second == 1) {
+					vecAux.push_back((*it1).first);
+					(*it1).second = 2;
+					k++;
+				}
+			}
+			components.push_back(vecAux); // Добавляем компоненту к результату
+			for (auto it1 = mpAuxCopy.begin(); it1 != mpAuxCopy.end(); it1++) // Определяем следующую вершину, которую еще не посетили
+				if ((*it1).second == 0) {                                     // так как мы идем с begin, то она будет с наибольшим временем захода среди непосещенных
+					a = (*it1).first;
+					break;
+				}
+			vecAux.clear(); // Очищаем вспомогательный вектор для след. компоненты
+		}
+		return components;
+	}
+}
+
+// Функция демонстрации нахождения компонент связности
+void findConnectedComponents_demonstration() {
+	// Пустой граф
+	Graph l = Graph("empty_graph.txt");
+	vector<vector<double>> vec = l.findConnectedComponents();
+	for (int i = 0; i < vec.size(); i++) {
+		cout << i + 1 << " component: ";
+		for (int j = 0; j < vec[i].size(); j++) {
+			cout << vec[i][j] << ", ";
+		}
+		cout << endl;
+	}
+
+	// Не ориентированный, не связный
+	Graph a = Graph("not_orinted_weighted_2_comps.txt");
+	vec = a.findConnectedComponents();
+	for (int i = 0; i < vec.size(); i++) {
+		cout << i + 1 << " component: ";
+		for (int j = 0; j < vec[i].size(); j++) {
+			cout << vec[i][j] << ", ";
+		}
+		cout << endl;
+	}
+
+	// Не ориентированный, связный
+	Graph d = Graph("not_oriented_weighted.txt");
+	vec = d.findConnectedComponents();
+	for (int i = 0; i < vec.size(); i++) {
+		cout << i + 1 << " component: ";
+		for (int j = 0; j < vec[i].size(); j++) {
+			cout << vec[i][j] << ", ";
+		}
+		cout << endl;
+	}
+
+	// Ориентированный, не связный
+	Graph b = Graph("disconnected_oriented_not_weighted.txt");
+	vec = b.findConnectedComponents();
+	for (int i = 0; i < vec.size(); i++) {
+		cout << i + 1 << " component: ";
+		for (int j = 0; j < vec[i].size(); j++) {
+			cout << vec[i][j] << ", ";
+		}
+		cout << endl;
+	}
+
+	// Ориентированный, связный
+	Graph p = Graph("connected_oriented_not_weighted.txt");
+	vec = p.findConnectedComponents();
+	for (int i = 0; i < vec.size(); i++) {
+		cout << i + 1 << " component: ";
+		for (int j = 0; j < vec[i].size(); j++) {
+			cout << vec[i][j] << ", ";
+		}
+		cout << endl;
+	}
+}
+
+// Вариант функции проверки графа на сильную связность с использованием поиска всех компонент
+bool Graph::isConnected_easy() {
+	vector<vector<double>> res = this->findConnectedComponents();
+	if (res.size() == 1)
+		return true;
+	else
+		return false;
+}
+
+// Функция демострации работы функции проверки сильной связности графа с использованием поиска всех компонент
+void isConnected_easy_demonstration() {
+	// Пустой граф
+	Graph l = Graph("empty_graph.txt");
+	if (l.isConnected_easy())
+		cout << "It is a connected graph\n";
+	else
+		cout << "It isn't a connected graph\n";
+
+	// Не ориентированный, не связный
+	Graph a = Graph("not_orinted_weighted_2_comps.txt");
+	if (a.isConnected_easy())
+		cout << "It is a connected graph\n";
+	else
+		cout << "It isn't a connected graph\n";
+
+	// Не ориентированный, связный
+	Graph d = Graph("not_oriented_weighted.txt");
+	if (d.isConnected_easy())
+		cout << "It is a connected graph\n";
+	else
+		cout << "It isn't a connected graph\n";
+
+	// Ориентированный, не связный
+	Graph b = Graph("connected_orinted_not_weighted.txt");
+	if (b.isConnected_easy())
+		cout << "It is a connected graph\n";
+	else
+		cout << "It isn't a connected graph\n";
+
+	// Ориентированный,  связный
+	Graph p = Graph("connected_oriented_not_weighted.txt");
+	if (p.isConnected_easy())
+		cout << "It is a connected graph\n";
+	else
+		cout << "It isn't a connected graph\n";
+}
+
+// Геттер вектора всех вершин
+vector<double> Graph::getKnots() {
+	return this->knots;
+}
+
+// Функция быстрой сортировки по весам
+void quick_sort(vector<pair<pair<double, double>, double>> &a, int L, int R) {
+	double m = a[(L + R) / 2].second; // Выбираем опорный элемент (его вес)
+	int i = L, j = R;			      // Ставим i и j на начало и конец текущего массива соответственно 
+	while (j >= i) {			      // Цикл с кодом сортировки
+		while (a[i].second < m) i++;
+		while (m < a[j].second) j--;
+		if (j >= i) {
+			swap(a[i], a[j]);
+			i++;
+			j--;
+		}
+	}
+	if ((j - L) > 0) quick_sort(a, L, j); // Рекрсивно вызываем эту же сортровку но на части массива
+	if ((R - i) > 0) quick_sort(a, i, R);
+}
+
+// Функция обхода в глубину с идеей белого, серого, черного цветов
+bool dfs_acyclicity(Graph gr, double v, map<double, int> &used, double v_prev, bool &flag) {
+	used[v] = 1;
+	map <double, vector<pair<double, double>>> current_mp = gr.getAdjacencylist();
+	for (auto it : current_mp[v]) {
+		if (used[it.first] == 1 && it.first != v_prev) {
+			flag = false;
+			return flag;
+		}
+		else if (used[it.first] == 1 && it.first == v_prev)
+			continue;
+		if (used[it.first] == 0) dfs_acyclicity(gr, it.first, used, v, flag);
+	}
+	used[v] = 2;
+	return flag;
+}
+
+// Функция проверки на наличие циклов
+bool hasCycles(Graph gr, map<double, vector<pair<double, double>>> mp) {
+	map<double, int> used;
+	vector<double> vec;
+	for (auto it = mp.begin(); it != mp.end(); it++)
+		vec.push_back((*it).first);
+	for (int i = 0; i < vec.size(); i++) { // Устанавливаем цвет всех вершин как непосещенные
+		used[vec[i]] = 0;
+	}
+	double v_prev = *vec.begin();
+	bool flag = true;
+	if (!dfs_acyclicity(gr, v_prev, used, v_prev, flag))
+		return false;
+	for (auto it = used.begin(); it != used.end(); it++) {
+		if ((*it).second == 0)
+			if (!dfs_acyclicity(gr, (*it).first, used, v_prev, flag))
+				return false;
+	}
+	return true;
+}
+
+// Реализация алгоритма Крускала
+Graph Graph::kruskalAlg() {
+	Graph a;
+	if (this->knots.size() == 0) {
+		cout << "Wrong operation(no Kruskal algorithm for empty graph)\n";
+		return a;
+	}
+	else if (this->isOriented == yes) {
+		cout << "Wrong operation(no Kruskal algorithm for oriented graph)\n";
+		return a;
+	}
+	else if (this->isWeighted == no) {
+		cout << "Wrong operation(no Kruskal algorithm for not weighted graph)\n";
+		return a;
+	}
+	else {
+		a = Graph(*this); // Берем копию графа
+		map <double, vector<pair<double, double>>> mpAux;
+		vector<double> vec;
+		//a.setKnots(vec); // Зануляем его список вершин
+		a.setAdjacencylist(mpAux); // Зануляем его список смежности
+
+		vector<pair<pair<double, double>, double>> sortedVertexList; // Вектор вида ((вершина, смежная вершина), вес)
+		double firstVertex = (*this->mainGraph.begin()).first, secondVertex, weight;  // Вершина из которой выходит ребро, вершина назначения и вес
+		pair<double, double> pr; // Пара вершин
+
+		// Заполнем вектор всеми ребрами
+		for (int i = 0; i < this->knots.size(); i++) {
+			firstVertex = this->knots[i];
+			for (auto it = this->mainGraph[this->knots[i]].begin(); it < this->mainGraph[this->knots[i]].end(); it++) {	
+				secondVertex = (*it).first;   // Получение вершины назначения
+				weight = (*it).second;        // Получение веса ребра   
+				pr = pair<double, double>(firstVertex, secondVertex); // Составляем пару
+				sortedVertexList.push_back(pair<pair<double, double>, double>(pr, weight)); // Вставляем элемент в список
+			}
+		}
+		// Сортируем массив
+		int L = 0, R = sortedVertexList.size() - 1; // Начальные значения для L и R
+		quick_sort(sortedVertexList, L, R);
+
+		int i = 0;
+		string vert1, vert2, w;
+ 		while (!a.isConnected_easy()) {
+			vert1 = to_string(sortedVertexList[i].first.first);
+			vert2 = to_string(sortedVertexList[i].first.second);
+			w     = to_string(sortedVertexList[i].second);
+			a.knotInsert(vert1);
+			a.knotInsert(vert2);
+			if (a.pathInsert(vert1, vert2, w))
+				if (!hasCycles(a, a.getAdjacencylist()))
+					a.pathDelete(vert1, vert2);
+			i++;
+		}
+		return a;
+	}
+}
+
+void kruscal_demonstration() {
+	Graph a = Graph("not_oriented_weighted_kruscal_1.txt");
+	Graph b = a.kruskalAlg();
+	b.printInFile("Kruscal_result_1.txt");
+
+	Graph c = Graph("not_oriented_weighted_kruscal_2.txt");
+	b = c.kruskalAlg();
+	b.printInFile("Kruscal_result_1.txt");
+
+	Graph d = Graph("not_oriented_weighted_kruscal_2.txt");
+	b = d.kruskalAlg();
+	c.printGraph();
+}
+
+int main() {
+
+	creation_demonstration();
+	//insertion_vertex_demonstration();
+	//insertion_path_demonstration();
+	//delete_vertex_demonstration();
+	//delete_path_demonstration();
+	//indegree_demonstration();
+	//outdegree_demonstration();
+	//reverse_graph_demonstration();
+	//isConnected_demonstration();
+	//findConnectedComponents_demonstration();
+	//isConnected_easy_demonstration();
+	Graph b = Graph("not_oriented_weighted_kruscal_2.txt");
+	Graph c = b.kruskalAlg();
+	c.printGraph();
+
+
+
+	system("pause");
+	return 0;
+}
